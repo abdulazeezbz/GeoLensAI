@@ -76,9 +76,9 @@ export default function Camera() {
         });
 
         const allObjects = [...detectedObjects, ...persons];
-        const message = `Describe surroundings for a blind person: ${allObjects.join(
+        const message = `Describe surroundings: ${allObjects.join(
           ", "
-        )}. Keep it under 2 sentences.`;
+        )}. Keep it under 1 sentences.`;
 
         // Send to Groq
         const res = await fetch("/api/vision", {
