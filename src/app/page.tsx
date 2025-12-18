@@ -1,4 +1,4 @@
-import Camera from "./components/Camera";
+import Camera from "./components/camera";
 
 export default function Home() {
   return (

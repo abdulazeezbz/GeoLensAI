@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       );
 
     // Append instruction for concise response
-    const shortMessage = `${message} Please respond in 2 short sentences, concise and easy to speak aloud.`;
+    const shortMessage = `${message} and tell what did u see in the scene, Please respond in 1 short sentences, concise and easy to speak aloud.`;
 
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
