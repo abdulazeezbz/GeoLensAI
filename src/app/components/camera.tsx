@@ -3,8 +3,6 @@
 import Webcam from "react-webcam";
 import { useRef, useEffect, useState } from "react";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
-import * as blazeface from "@tensorflow-models/blazeface";
-import * as faceapi from "face-api.js";
 import "@tensorflow/tfjs";
 // @ts-ignore
 import ColorThief from "color-thief-browser";
@@ -14,26 +12,18 @@ export default function Camera() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [objectModel, setObjectModel] = useState<cocoSsd.ObjectDetection | null>(null);
-  const [faceModel, setFaceModel] = useState<blazeface.BlazeFaceModel | null>(null);
   const [description, setDescription] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isReady, setIsReady] = useState(false);
 
-  // Load models
+  // Load COCO-SSD model
   useEffect(() => {
     cocoSsd.load().then(setObjectModel);
-    blazeface.load().then(setFaceModel);
-
-    const loadFaceApiModels = async () => {
-      await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
-      await faceapi.nets.faceExpressionNet.loadFromUri("/models");
-    };
-    loadFaceApiModels();
   }, []);
 
   // Main loop
   useEffect(() => {
-    if (!isReady || !objectModel || !faceModel) return;
+    if (!isReady || !objectModel) return;
 
     const interval = setInterval(async () => {
       try {
@@ -52,7 +42,6 @@ export default function Camera() {
         ctx.font = "16px Arial";
         ctx.fillStyle = "green";
 
-        // Detect objects
         const predictions = await objectModel.detect(video);
         const detectedObjects: string[] = [];
         const colorThief = new ColorThief();
@@ -64,6 +53,7 @@ export default function Camera() {
           ctx.fillText(p.class, x, y > 10 ? y - 5 : y + 15);
 
           if (p.class === "person") {
+            // Detect clothing color
             const tmpCanvas = document.createElement("canvas");
             tmpCanvas.width = w;
             tmpCanvas.height = h;
@@ -85,36 +75,10 @@ export default function Camera() {
           }
         });
 
-        // Detect faces + expressions
-        const detections = await faceapi
-          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-          .withFaceExpressions();
-
-        const faceCount = detections.length;
-        const expressionDescriptions: string[] = [];
-
-        detections.forEach((detection) => {
-          const box = detection.detection.box;
-          ctx.strokeRect(box.x, box.y, box.width, box.height);
-          const dominantExpression = Object.entries(detection.expressions)
-            .sort((a, b) => b[1] - a[1])[0][0];
-          expressionDescriptions.push(dominantExpression);
-          ctx.fillText(dominantExpression, box.x, box.y > 10 ? box.y - 5 : box.y + 15);
-        });
-
-        // People summary
-        let peopleDesc = "";
-        if (faceCount === 1)
-          peopleDesc = `1 person${expressionDescriptions[0] ? ` ${expressionDescriptions[0]}` : ""}`;
-        else if (faceCount > 3) peopleDesc = `a group of people`;
-        else if (faceCount > 1) peopleDesc = `${faceCount} people`;
-
-        // Combine objects, persons, and expressions
         const allObjects = [...detectedObjects, ...persons];
-
         const message = `Describe surroundings for a blind person: ${allObjects.join(
           ", "
-        )}. ${peopleDesc ? peopleDesc + "." : ""} Keep it under 2 sentences.`;
+        )}. Keep it under 2 sentences.`;
 
         // Send to Groq
         const res = await fetch("/api/vision", {
@@ -122,6 +86,7 @@ export default function Camera() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message }),
         });
+
         const data = await res.json();
         if (data.text) {
           setDescription(""); // remove previous description
@@ -134,25 +99,27 @@ export default function Camera() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isReady, objectModel, faceModel, isSpeaking]);
+  }, [isReady, objectModel, isSpeaking]);
 
-  // Browser-safe speech synthesis
   function speak(text: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
 
-    speechSynthesis.cancel();
+    window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 0.9;
 
-    const voices = speechSynthesis.getVoices();
-    const femaleVoice = voices.find((v) => /female|zira|susan|sallie/i.test(v.name));
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find((v) =>
+      /female|zira|susan|sallie/i.test(v.name)
+    );
     if (femaleVoice) utterance.voice = femaleVoice;
 
     utterance.lang = "en-US";
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
 
-    speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(utterance);
   }
 
   return (
